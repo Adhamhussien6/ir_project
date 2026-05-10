@@ -16,7 +16,7 @@ Active solar techniques use photovoltaics, concentrated solar power, solar therm
 In 2000, the United Nations Development Programme, UN Department of Economic and Social Affairs, and World Energy Council published an estimate of the potential solar energy that could be used by humans each year. This took into account factors such as insolation, cloud cover, and the land that is usable by humans. It was stated that solar energy has a global potential of 1,600 to 49,800 exajoules (4.4×1014 to 1.4×1016 kWh) per year (see table below).
 
 
-== Thermal energy ==
+== Thermal energy ===
 
 Solar thermal technologies can be used for water heating, space heating, space cooling and process heat generation.
 
