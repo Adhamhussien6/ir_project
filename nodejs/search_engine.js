@@ -1,154 +1,140 @@
-const fs = require('fs');
+const fs   = require('fs');
 const path = require('path');
 
 const STOPWORDS = new Set([
-    'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-    'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
-    'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-    'would', 'could', 'should', 'may', 'might', 'shall', 'can', 'need',
-    'it', 'its', 'this', 'that', 'these', 'those', 'i', 'we', 'you', 'he',
-    'she', 'they', 'me', 'us', 'him', 'her', 'them', 'my', 'our', 'your',
-    'his', 'their', 'what', 'which', 'who', 'when', 'where', 'how', 'all',
-    'also', 'more', 'into', 'than', 'then', 'so', 'such', 'about', 'up',
-    'out', 'if', 'not', 'no', 'only', 'new', 'other', 'while', 'both',
-    'each', 'over', 'after', 'before', 'between', 'through', 'during',
-    'without', 'like', 'used', 'use', 'using', 'now', 'well', 'very',
-    'most', 'many', 'much', 'some', 'any', 'one', 'two', 'three', 'first',
-    'second', 'however', 'including', 'make', 'made', 'still', 'known',
-    'often', 'even', 'since', 'continue', 'continued',
+    'a','an','the','and','or','but','in','on','at','to','for','of','with',
+    'by','from','as','is','was','are','were','be','been','being','have',
+    'has','had','do','does','did','will','would','could','should','may',
+    'might','shall','can','it','its','this','that','these','those','i',
+    'we','you','he','she','they','me','us','him','her','them','my','our',
+    'your','his','their','what','which','who','when','where','how','all',
+    'also','more','into','than','then','so','such','about','up','out','if',
+    'not','no','only','new','other','while','both','each','over','after',
+    'before','between','through','during','without','like','used','use',
+    'using','now','well','very','most','many','much','some','any','one',
+    'two','three','first','second','however','including','make','made',
+    'still','known','often','even','since','continue','continued',
 ]);
 
 function preprocess(text) {
-    return text
-        .toLowerCase()
-        .replace(/[^\w\s]/g, '')
-        .split(/\s+/)
-        .filter(t => t.length > 2 && !STOPWORDS.has(t));
+    const words = text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/);
+    return words.filter(w => w.length > 2 && !STOPWORDS.has(w));
 }
 
 function computeTF(tokens) {
-    const tf = {};
-    for (const token of tokens) {
-        tf[token] = (tf[token] || 0) + 1;
+    const counts = {};
+    for (const word of tokens) {
+        counts[word] = (counts[word] || 0) + 1;
     }
-    const total = tokens.length;
-    for (const term in tf) {
-        tf[term] /= total;
+    const tf = {};
+    for (const word in counts) {
+        tf[word] = counts[word] / tokens.length;
     }
     return tf;
 }
 
-function computeIDF(documents) {
-    const N = Object.keys(documents).length;
-    const df = {};
-    for (const tokens of Object.values(documents)) {
-        for (const term of new Set(tokens)) {
-            df[term] = (df[term] || 0) + 1;
+function computeIDF(allTokens) {
+    const totalDocs = Object.keys(allTokens).length;
+    const docCount  = {};
+    for (const tokens of Object.values(allTokens)) {
+        for (const word of new Set(tokens)) {
+            docCount[word] = (docCount[word] || 0) + 1;
         }
     }
     const idf = {};
-    for (const term in df) {
-        idf[term] = Math.log10(N / df[term]);
+    for (const word in docCount) {
+        idf[word] = Math.log10(totalDocs / docCount[word]);
     }
     return idf;
 }
 
 function cosineSimilarity(vecA, vecB) {
-    const common = Object.keys(vecA).filter(t => t in vecB);
-    if (common.length === 0) return 0;
+    let dot  = 0;
+    let magA = 0;
+    let magB = 0;
 
-    const dot = common.reduce((sum, t) => sum + vecA[t] * vecB[t], 0);
-    const magA = Math.sqrt(Object.values(vecA).reduce((s, v) => s + v * v, 0));
-    const magB = Math.sqrt(Object.values(vecB).reduce((s, v) => s + v * v, 0));
+    for (const word in vecA) {
+        magA += vecA[word] ** 2;
+        if (word in vecB) dot += vecA[word] * vecB[word];
+    }
+    for (const word in vecB) {
+        magB += vecB[word] ** 2;
+    }
 
     if (magA === 0 || magB === 0) return 0;
-    return dot / (magA * magB);
+    return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 class SearchEngine {
     constructor(docsFolder) {
-        this.docsFolder = docsFolder;
         this.rawDocs = {};
-        this.tokens = {};
-        this.tf = {};
-        this.idf = {};
-        this.tfidf = {};
-        this._buildIndex();
+        this.tfidf   = {};
+        this.idf     = {};
+        this._buildIndex(docsFolder);
     }
 
-    _loadDocuments() {
-        const files = fs.readdirSync(this.docsFolder).filter(f => f.endsWith('.txt'));
-        for (const fname of files) {
-            const fpath = path.join(this.docsFolder, fname);
-            this.rawDocs[fname] = fs.readFileSync(fpath, 'utf-8');
-        }
-    }
-
-    _buildIndex() {
+    _buildIndex(docsFolder) {
         console.log('Loading documents...');
-        this._loadDocuments();
-
-        console.log('Preprocessing text...');
-        for (const [fname, text] of Object.entries(this.rawDocs)) {
-            this.tokens[fname] = preprocess(text);
+        const files = fs.readdirSync(docsFolder).filter(f => f.endsWith('.txt'));
+        for (const file of files) {
+            this.rawDocs[file] = fs.readFileSync(path.join(docsFolder, file), 'utf-8');
         }
 
-        console.log('Computing TF scores...');
-        for (const [fname, toks] of Object.entries(this.tokens)) {
-            this.tf[fname] = computeTF(toks);
+        console.log('Preprocessing & computing TF...');
+        const allTokens = {};
+        const allTF     = {};
+        for (const file in this.rawDocs) {
+            const tokens    = preprocess(this.rawDocs[file]);
+            allTokens[file] = tokens;
+            allTF[file]     = computeTF(tokens);
         }
 
-        console.log('Computing IDF scores...');
-        this.idf = computeIDF(this.tokens);
+        console.log('Computing IDF...');
+        this.idf = computeIDF(allTokens);
 
         console.log('Building TF-IDF matrix...');
-        for (const fname of Object.keys(this.rawDocs)) {
-            this.tfidf[fname] = {};
-            for (const term in this.tf[fname]) {
-                this.tfidf[fname][term] = this.tf[fname][term] * (this.idf[term] || 0);
+        for (const file in this.rawDocs) {
+            this.tfidf[file] = {};
+            for (const word in allTF[file]) {
+                this.tfidf[file][word] = allTF[file][word] * (this.idf[word] || 0);
             }
         }
 
-        const numDocs = Object.keys(this.rawDocs).length;
-        const numTerms = Object.keys(this.idf).length;
-        console.log(`Index built: ${numDocs} documents, ${numTerms} unique terms.\n`);
+        console.log(`Index ready: ${files.length} documents, ${Object.keys(this.idf).length} terms.\n`);
     }
 
     search(query, topK = 5) {
         const queryTokens = preprocess(query);
         if (queryTokens.length === 0) return [];
 
-        const queryTF = computeTF(queryTokens);
-        const queryTFIDF = {};
-        for (const term in queryTF) {
-            queryTFIDF[term] = queryTF[term] * (this.idf[term] || 0);
+        const queryTF  = computeTF(queryTokens);
+        const queryVec = {};
+        for (const word in queryTF) {
+            queryVec[word] = queryTF[word] * (this.idf[word] || 0);
         }
 
-        const scores = Object.entries(this.tfidf).map(([fname, docVec]) => ({
-            doc: fname,
-            score: cosineSimilarity(queryTFIDF, docVec),
-        }));
+        const results = [];
+        for (const file in this.tfidf) {
+            const score = cosineSimilarity(queryVec, this.tfidf[file]);
+            if (score > 0) results.push({ doc: file, score });
+        }
 
-        return scores
-            .filter(r => r.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, topK);
+        return results.sort((a, b) => b.score - a.score).slice(0, topK);
     }
 
-    getSnippet(filename, query, context = 60) {
-        const text = this.rawDocs[filename] || '';
-        const queryWords = query.toLowerCase().split(/\s+/)
-            .filter(w => !STOPWORDS.has(w) && w.length > 2);
+    getSnippet(filename, query, contextChars = 60) {
+        const text      = this.rawDocs[filename] || '';
         const lowerText = text.toLowerCase();
+        const words     = preprocess(query);
 
         const positions = [];
-        for (const word of queryWords) {
-            let start = 0;
+        for (const word of words) {
+            let i = 0;
             while (true) {
-                const pos = lowerText.indexOf(word, start);
+                const pos = lowerText.indexOf(word, i);
                 if (pos === -1) break;
                 positions.push(pos);
-                start = pos + 1;
+                i = pos + 1;
             }
         }
 
@@ -156,34 +142,36 @@ class SearchEngine {
 
         positions.sort((a, b) => a - b);
 
-        // merge overlapping windows
         const windows = [];
         for (const pos of positions) {
-            const lo = Math.max(0, pos - context);
-            const hi = Math.min(text.length, pos + context);
-            if (windows.length > 0 && lo <= windows[windows.length - 1][1]) {
-                windows[windows.length - 1][1] = hi;
+            const start = Math.max(0, pos - contextChars);
+            const end   = Math.min(text.length, pos + contextChars);
+            const last  = windows[windows.length - 1];
+            if (last && start <= last[1]) {
+                last[1] = end;
             } else {
-                windows.push([lo, hi]);
+                windows.push([start, end]);
             }
         }
 
-        return windows.map(([lo, hi]) => {
-            let chunk = text.slice(lo, hi).trim();
-            if (lo > 0) chunk = '...' + chunk;
-            if (hi < text.length) chunk += '...';
+        return windows.map(([s, e]) => {
+            let chunk = text.slice(s, e).trim();
+            if (s > 0)          chunk = '...' + chunk;
+            if (e < text.length) chunk += '...';
             return chunk;
         }).join('  |  ');
     }
 
     getStats() {
-        const numDocs = Object.keys(this.rawDocs).length;
-        const numTerms = Object.keys(this.idf).length;
         const topTerms = Object.entries(this.idf)
             .sort((a, b) => a[1] - b[1])
             .slice(0, 10)
-            .map(([t]) => t);
-        return { numDocs, numTerms, topTerms };
+            .map(([term]) => term);
+        return {
+            numDocs:  Object.keys(this.rawDocs).length,
+            numTerms: Object.keys(this.idf).length,
+            topTerms,
+        };
     }
 }
 
