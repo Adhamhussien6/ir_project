@@ -12,7 +12,7 @@ const rl = readline.createInterface({
     prompt: 'Search> ',
 });
 
-console.log("Type a query to search | 'stats' to see index info | 'quit' to exit\n");
+console.log("Type a query to search  | 'quit' to exit\n");
 rl.prompt();
 
 rl.on('line', (line) => {
@@ -29,14 +29,7 @@ rl.on('line', (line) => {
         return;
     }
 
-    if (query === 'stats') {
-        const { numDocs, numTerms, topTerms } = engine.getStats();
-        console.log(`\nDocuments : ${numDocs}`);
-        console.log(`Terms     : ${numTerms}`);
-        console.log(`Top terms : ${topTerms.join(', ')}\n`);
-        rl.prompt();
-        return;
-    }
+  
 
     const results = engine.search(query, 5);
 

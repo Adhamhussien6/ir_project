@@ -22,6 +22,7 @@ function preprocess(text) {
 }
 
 function computeTF(tokens) {
+    // ابوجيكت فاضي هنحط فية تكرار كل كلمة
     const counts = {};
     for (const word of tokens) {
         counts[word] = (counts[word] || 0) + 1;
@@ -35,6 +36,7 @@ function computeTF(tokens) {
 
 function computeIDF(allTokens) {
     const totalDocs = Object.keys(allTokens).length;
+    // اوبجكت فاضي هنحط فية الكلمة دي موجودة في كام دوكمنت
     const docCount  = {};
     for (const tokens of Object.values(allTokens)) {
         for (const word of new Set(tokens)) {
@@ -162,17 +164,7 @@ class SearchEngine {
         }).join('  |  ');
     }
 
-    getStats() {
-        const topTerms = Object.entries(this.idf)
-            .sort((a, b) => a[1] - b[1])
-            .slice(0, 10)
-            .map(([term]) => term);
-        return {
-            numDocs:  Object.keys(this.rawDocs).length,
-            numTerms: Object.keys(this.idf).length,
-            topTerms,
-        };
-    }
+   
 }
 
 module.exports = SearchEngine;
