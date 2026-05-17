@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IR Search Engine</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 16px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            color: #1a1a2e;
+            letter-spacing: 1px;
+        }
+
+        header p {
+            color: #666;
+            margin-top: 6px;
+            font-size: 0.95rem;
+        }
+
+        .search-box {
+            display: flex;
+            width: 100%;
+            max-width: 680px;
+            gap: 8px;
+            margin-bottom: 32px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 14px 18px;
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+            background: #fff;
+        }
+
+        .search-box input:focus {
+            border-color: #4f46e5;
+        }
+
+        .search-box button {
+            padding: 14px 24px;
+            background: #4f46e5;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .search-box button:hover { background: #4338ca; }
+        .search-box button:disabled { background: #a5b4fc; cursor: default; }
+
+        #topK-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 24px;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        #topK-row input[type=range] { width: 120px; accent-color: #4f46e5; }
+
+        #results {
+            width: 100%;
+            max-width: 680px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .result-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 20px 22px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            border-left: 4px solid #4f46e5;
+        }
+
+        .result-card .rank-name {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .result-card .name {
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: #1a1a2e;
+            text-transform: capitalize;
+        }
+
+        .result-card .score {
+            font-size: 0.82rem;
+            background: #ede9fe;
+            color: #4f46e5;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .result-card .snippet {
+            color: #555;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .result-card .snippet mark {
+            background: #fef08a;
+            border-radius: 3px;
+            padding: 0 2px;
+        }
+
+        #status {
+            color: #888;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .spinner {
+            display: none;
+            width: 28px;
+            height: 28px;
+            border: 3px solid #e0e7ff;
+            border-top-color: #4f46e5;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>IR Search Engine</h1>
+    <p>TF-IDF powered search over Wikipedia documents</p>
+</header>
+
+<div class="search-box">
+    <input id="query" type="text" placeholder="Type your query..." autofocus />
+    <button id="searchBtn" onclick="doSearch()">Search</button>
+</div>
+
+<div id="topK-row">
+    <label for="topK">Results:</label>
+    <input id="topK" type="range" min="1" max="20" value="5" oninput="document.getElementById('topKVal').textContent=this.value" />
+    <span id="topKVal">5</span>
+</div>
+
+<div class="spinner" id="spinner"></div>
+<div id="status"></div>
+<div id="results"></div>
+
+<script>
+    document.getElementById('query').addEventListener('keydown', e => {
+        if (e.key === 'Enter') doSearch();
+    });
+
+    function highlight(text, queryWords) {
+        if (!queryWords.length) return text;
+        const escaped = queryWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+        return text.replace(re, '<mark>$1</mark>');
+    }
+
+    async function doSearch() {
+        const query = document.getElementById('query').value.trim();
+        const topK  = document.getElementById('topK').value;
+        const btn   = document.getElementById('searchBtn');
+
+        if (!query) return;
+
+        btn.disabled = true;
+        document.getElementById('spinner').style.display = 'block';
+        document.getElementById('status').textContent = '';
+        document.getElementById('results').innerHTML = '';
+
+        try {
+            const res  = await fetch(`/search?q=${encodeURIComponent(query)}&k=${topK}`);
+            const data = await res.json();
+
+            document.getElementById('spinner').style.display = 'none';
+
+            if (!data.results.length) {
+                document.getElementById('status').textContent = 'No results found.';
+                return;
+            }
+
+            const words = query.toLowerCase().replace(/[^\w\s]/g,'').split(/\s+/).filter(Boolean);
+
+            document.getElementById('status').textContent =
+                `Found ${data.results.length} result(s) for "${query}"`;
+
+            const container = document.getElementById('results');
+            data.results.forEach((r, i) => {
+                const card = document.createElement('div');
+                card.className = 'result-card';
+                card.innerHTML = `
+                    <div class="rank-name">
+                        <span class="name">${i + 1}. ${r.name}</span>
+                        <span class="score">score: ${r.score}</span>
+                    </div>
+                    <div class="snippet">${highlight(r.snippet, words)}</div>
+                `;
+                container.appendChild(card);
+            });
+
+        } catch (err) {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('status').textContent = 'Error connecting to server.';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>

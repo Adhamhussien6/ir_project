@@ -1,8 +1,8 @@
 const readline   = require('readline');
 const path       = require('path');
-const SearchEngine = require('./search_engine');
+const SearchEngine = require('./src/search_engine');
 
-const DOCS_FOLDER = path.join(__dirname, '..', 'documents');
+const DOCS_FOLDER = path.join(__dirname, 'documents');
 
 const engine = new SearchEngine(DOCS_FOLDER);
 
